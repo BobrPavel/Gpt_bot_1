@@ -11,10 +11,9 @@ from aiogram import types, Router, F
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.fsm.storage.memory import MemoryStorage
 
+from openai import OpenAI, OpenAIError, RateLimitError, PermissionDeniedError
 
-from openai import OpenAI, OpenAIError
 
 from kbds.reply import get_keyboard
 
@@ -35,10 +34,12 @@ messages = [{"role": "system", "content": "You are helpful chat gpt bot in teleg
 # Клавиатуры
 # --------------------------------------------------------------------------------
 
+
 START_KB = get_keyboard(
     "Новый запрос",
     sizes=(1,),
 )
+
 
 # --------------------------------------------------------------------------------
 # FSM состояния
@@ -90,7 +91,7 @@ async def new_request_cmd(message: types.Message, state: FSMContext):
 # --------------------------------------------------------------------------------
 
 
-@user_private_router.message()
+@user_private_router.message(F.text)
 async def gpt_request(message: types.Message, state: FSMContext):
     # Получаем контекст пользователя
     data = await state.get_data()
@@ -122,13 +123,31 @@ async def gpt_request(message: types.Message, state: FSMContext):
         # Отправляем ответ пользователю
         await message.answer(answer)
 
+    except RateLimitError:
+        # Ошибка: закончилась квота / тариф не оплачен
+        await message.answer(
+            "Похоже, что квота на использование ChatGPT закончилась или тариф не оплачен.\n"
+            "Пожалуйста, продлите доступ в панели OpenAI и попробуйте снова."
+        )
+
+
+    except PermissionDeniedError:
+        # Ошибка: доступ к модели запрещён (тоже бывает при неоплате)
+        await message.answer(
+            "У API-ключа недостаточно прав для обращения к модели.\n"
+            "Возможно, тариф не оплачен или закончилась квота."
+        )
+
+
     except OpenAIError:
         await message.answer(
             "Извините, сервис ChatGPT временно недоступен. Попробуйте позже."
         )
     
 
-
+@user_private_router.message()
+async def gpt_request_invalid(message: types.Message):
+    await message.answer("Бот работает только с текстовыми сообщениями")
 
 
 
